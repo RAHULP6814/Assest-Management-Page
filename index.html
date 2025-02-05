@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Employee Asset Portal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        body {
+            background: #f0f2f5;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 95%;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: #2563eb;
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-size: 16px;
+        }
+
+        .btn:hover {
+            background: #1d4ed8;
+        }
+
+        .btn:disabled {
+            background: #93c5fd;
+            cursor: not-allowed;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        input.error, textarea.error {
+            border-color: #ef4444;
+        }
+
+        textarea {
+            min-height: 100px;
+        }
+
+        .error-message {
+            color: #ef4444;
+            font-size: 0.875rem;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .request-form {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .asset-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .asset-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-pending { color: #eab308; font-weight: 600; }
+        .status-approved { color: #22c55e; font-weight: 600; }
+        .status-rejected { color: #ef4444; font-weight: 600; }
+
+        .char-count {
+            position: absolute;
+            right: 0;
+            top: 0;
+            font-size: 0.75rem;
+            color: #6b7280;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Employee Asset Portal</h2>
+        </div>
+
+        <div class="request-form">
+            <h3 style="margin-bottom: 20px;">Request New Asset</h3>
+            <div class="input-group">
+                <label for="employeeName">Employee ID</label>
+                <input type="text" id="employeeName" placeholder="Enter your Employee ID">
+                <div id="employeeIdError" class="error-message">Invalid Employee ID. It must start with ATS uppercase letters, followed by '0', and end with 3 digits.</div>
+            </div>
+            <div class="input-group">
+                <label for="assetName">Asset Name</label>
+                <span class="char-count" id="assetNameCount">0/5</span>
+                <input type="text" id="assetName" placeholder="Enter asset name (minimum 5 characters)" required>
+                <div id="assetNameError" class="error-message">Asset name must be at least 5 characters long (excluding spaces)</div>
+            </div>
+            
+            <div class="input-group">
+                <label for="assetType">Asset Type</label>
+                <select id="assetType">
+                    <option value="laptop">Laptop</option>
+                    <option value="desktop">Desktop</option>
+                    <option value="mouse">Mouse</option>
+                    <option value="bag">Laptop Bag</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label for="reason">Reason for Request</label>
+                <span class="char-count" id="reasonCount">0/5</span>
+                <textarea id="reason" placeholder="Enter reason for request (minimum 5 characters)"></textarea>
+                <div id="reasonError" class="error-message">Reason must be at least 5 characters long (excluding spaces)</div>
+            </div>
+            <button class="btn" id="submitBtn" onclick="submitRequest()" disabled>Submit Request</button>
+        </div>
+
+        <div class="asset-list" id="employeeAssets"></div>
+    </div>
+
+    <script>
+        // Check if localStorage has assetRequests, if not initialize it
+        if (!localStorage.getItem('assetRequests')) {
+            localStorage.setItem('assetRequests', JSON.stringify([]));
+        }
+
+        function getCharCountExcludingSpaces(str) {
+            return str.replace(/\s/g, '').length;
+        }
+
+        function validateField(element, errorId) {
+            const value = element.value;
+            const charCountExcludingSpaces = getCharCountExcludingSpaces(value);
+            const errorElement = document.getElementById(errorId);
+            const countElement = document.getElementById(element.id + 'Count');
+            
+            if (countElement) {
+                countElement.textContent = `${charCountExcludingSpaces}/5`;
+            }
+
+            // Check if the value (excluding spaces) meets the minimum length
+            const isValid = charCountExcludingSpaces >= 5;
+            
+            // Update UI
+            element.classList.toggle('error', !isValid);
+            errorElement.style.display = isValid ? 'none' : 'block';
+
+            // Enable/disable submit button based on all validations
+            updateSubmitButton();
+            
+            return isValid;
+        }
+
+        function updateSubmitButton() {
+            const employeeName = document.getElementById('employeeName').value.trim();
+            const assetName = document.getElementById('assetName').value;
+            const reason = document.getElementById('reason').value;
+            const submitBtn = document.getElementById('submitBtn');
+            
+            const employeeIdPattern = /^ATS0\d{3}$/;
+            const isValid = employeeIdPattern.test(employeeName) && 
+                           getCharCountExcludingSpaces(assetName) >= 5 && 
+                           getCharCountExcludingSpaces(reason) >= 5;
+            
+            submitBtn.disabled = !isValid;
+        }
+
+        // Employee ID validation event listener
+        document.getElementById('employeeName').addEventListener('input', function() {
+            const employeeIdInput = this.value;
+            const employeeIdError = document.getElementById('employeeIdError');
+            const employeeIdPattern = /^ATS0\d{3}$/;
+
+            // Toggle error message visibility based on input validity
+            employeeIdError.style.display = employeeIdPattern.test(employeeIdInput) ? 'none' : 'block';
+            this.classList.toggle('error', !employeeIdPattern.test(employeeIdInput));
+            
+            updateSubmitButton();
+        });
+
+        // Add validation listeners to all required fields
+        ['assetName', 'reason'].forEach(fieldId => {
+            const element = document.getElementById(fieldId);
+            element.addEventListener('input', () => validateField(element, `${fieldId}Error`));
+        });
+
+        function submitRequest() {
+            const employeeName = document.getElementById('employeeName').value;
+            const assetName = document.getElementById('assetName').value;
+            const assetType = document.getElementById('assetType').value;
+            const reason = document.getElementById('reason').value;
+
+            // Validate all fields before submission
+            const employeeIdPattern = /^ATS0\d{3}$/;
+            if (!employeeIdPattern.test(employeeName) || 
+                getCharCountExcludingSpaces(assetName) < 5 || 
+                getCharCountExcludingSpaces(reason) < 5) {
+                alert('Please fix all validation errors before submitting');
+                return;
+            }
+
+            const request = {
+                id: Date.now(),
+                employeeName,
+                assetName,
+                assetType,
+                reason,
+                status: 'pending',
+                date: new Date().toLocaleDateString()
+            };
+
+            // Get current requests, add new one, and save back to localStorage
+            const requests = JSON.parse(localStorage.getItem('assetRequests'));
+            requests.push(request);
+            localStorage.setItem('assetRequests', JSON.stringify(requests));
+
+            updateEmployeeAssets();
+            
+            // Clear form and reset validations
+            document.getElementById('assetName').value = '';
+            document.getElementById('reason').value = '';
+            document.getElementById('assetNameCount').textContent = '0/5';
+            document.getElementById('reasonCount').textContent = '0/5';
+            updateSubmitButton();
+            
+            alert('Request submitted successfully!');
+        }
+
+        function updateEmployeeAssets() {
+            const assetsList = document.getElementById('employeeAssets');
+            const employeeName = document.getElementById('employeeName').value;
+            
+            if (employeeName) {
+                const requests = JSON.parse(localStorage.getItem('assetRequests'));
+                const userRequests = requests.filter(req => req.employeeName === employeeName);
+                
+                if (userRequests.length > 0) {
+                    assetsList.innerHTML = `
+                        <h3 style="grid-column: 1/-1; margin: 20px 0;">Your Requests</h3>
+                        ${userRequests.map(request => `
+                            <div class="asset-card">
+                                <h3>${request.assetName}</h3>
+                                <p><strong>Type:</strong> ${request.assetType}</p>
+                                <p><strong>Reason:</strong> ${request.reason}</p>
+                                <p><strong>Date:</strong> ${request.date}</p>
+                                <p class="status-${request.status}">Status: ${request.status}</p>
+                            </div>
+                        `).join('')}
+                    `;
+                } else {
+                    assetsList.innerHTML = '';
+                }
+            } else {
+                assetsList.innerHTML = '';
+            }
+        }
+
+        // Add event listener for employee name updates
+        document.getElementById('employeeName').addEventListener('input', updateEmployeeAssets);
+    </script>
+</body>
+</html>
+
+
+
+
+
+ADMIN SIDE CODE:
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Asset Portal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        body {
+            background: #f0f2f5;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            width: 95%;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: #2563eb;
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .employee-link {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: white;
+            color: #2563eb;
+            text-decoration: none;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .notification-badge {
+            background: #ef4444;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin-left: 8px;
+        }
+
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.3s;
+            font-size: 16px;
+        }
+
+        .btn:hover {
+            background: #1d4ed8;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-clear {
+            background: #ef4444;  /* Changed to red */
+            color: white;
+        }
+
+        .btn-clear:hover {
+            background: #dc2626;  /* Darker red on hover */
+        }
+
+        .notification-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .notification-item {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .notification-content {
+            margin-bottom: 15px;
+        }
+
+        .notification-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-pending { color: #eab308; font-weight: 600; }
+        .status-approved { color: #22c55e; font-weight: 600; }
+        .status-rejected { color: #ef4444; font-weight: 600; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .modal-actions {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-content">
+                <h2>Admin Portal <span id="notificationBadge" class="notification-badge">0</span></h2>
+            </div>
+            <button class="btn btn-clear" onclick="showClearConfirmation()">Clear Records</button>
+        </div>
+        
+        <div class="notification-list" id="notifications"></div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="clearConfirmationModal" class="modal">
+        <div class="modal-content">
+            <h3>Clear All Records</h3>
+            <p>Are you sure you want to delete all asset request records? This action cannot be undone.</p>
+            <div class="modal-actions">
+                <button class="btn btn-danger" onclick="clearRecords()">Yes, Clear All</button>
+                <button class="btn" onclick="hideClearConfirmation()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function updateNotifications() {
+            const notificationsList = document.getElementById('notifications');
+            const badge = document.getElementById('notificationBadge');
+            
+            // Get requests from localStorage
+            const requests = JSON.parse(localStorage.getItem('assetRequests') || '[]');
+            const pendingRequests = requests.filter(req => req.status === 'pending');
+            badge.textContent = pendingRequests.length;
+
+            if (requests.length === 0) {
+                notificationsList.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No Requests Yet</h3>
+                        <p>New asset requests will appear here</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            notificationsList.innerHTML = requests.map(request => `
+                <div class="notification-item">
+                    <div class="notification-content">
+                        <h3>${request.assetName} (${request.assetType})</h3>
+                        <p><strong>Requested by:</strong> ${request.employeeName}</p>
+                        <p><strong>Reason:</strong> ${request.reason}</p>
+                        <p><strong>Date:</strong> ${request.date}</p>
+                        <p class="status-${request.status}">Status: ${request.status}</p>
+                    </div>
+                    ${request.status === 'pending' ? `
+                        <div class="notification-actions">
+                            <button class="btn" onclick="updateRequest(${request.id}, 'approved')">Approve</button>
+                            <button class="btn btn-danger" onclick="updateRequest(${request.id}, 'rejected')">Reject</button>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        function updateRequest(id, status) {
+            const requests = JSON.parse(localStorage.getItem('assetRequests'));
+            const request = requests.find(req => req.id === id);
+            if (request) {
+                request.status = status;
+                localStorage.setItem('assetRequests', JSON.stringify(requests));
+                updateNotifications();
+            }
+        }
+
+        function showClearConfirmation() {
+            const modal = document.getElementById('clearConfirmationModal');
+            modal.style.display = 'flex';
+        }
+
+        function hideClearConfirmation() {
+            const modal = document.getElementById('clearConfirmationModal');
+            modal.style.display = 'none';
+        }
+
+        function clearRecords() {
+            localStorage.removeItem('assetRequests');
+            updateNotifications();
+            hideClearConfirmation();
+        }
+
+        // Initial update
+        updateNotifications();
+
+        // Check for new requests every 30 seconds
+        setInterval(updateNotifications, 30000);
+    </script>
+</body>
+</html>
